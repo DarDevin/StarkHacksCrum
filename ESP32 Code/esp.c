@@ -1,10 +1,22 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+#include "readValues.h"
 
 const char* ssid     = "YOUR_WIFI_SSID";
 const char* password = "YOUR_WIFI_PASSWORD";
 const char* serverIP = "192.168.1.XXX"; // IP of the machine running Flask
+
+/**RUN THROUGH OF EACH FUNCTION:
+
+getSnowProbability() -> gets the snowprobability from flask on a separate database
+
+setup() -> CALL SETUP FIRST, sets up everything first
+
+loop() -> General loop, calls getSnowProbability every 10 minutes, and prints the result to the serial monitor. In a real implementation, you would replace the hardcoded temp and humidity with actual sensor readings.
+
+**/
+
 
 // --- Main function you call anywhere in your code ---
 float getSnowProbability(float tempC, float humidity) {
@@ -31,6 +43,12 @@ float getSnowProbability(float tempC, float humidity) {
   return -1.0; // error
 }
 
+float getSnowProbabilityFromSensors() {
+  float temp = readTemp();
+  float humidity = readHumidity();
+  return getSnowProbability(temp, humidity);
+}
+
 // --- Setup ---
 void setup() {
   Serial.begin(115200);
@@ -44,20 +62,22 @@ void setup() {
 
 // --- Loop: call every 10 minutes ---
 void loop() {
-  float temp = 2.0;      // Replace with real sensor reading (e.g. DHT22)
-  float humidity = 85.0; // Replace with real sensor reading
+  roundCheck();
+  delay(600000); // wait 10 minutes
+}
 
-  float prob = getSnowProbability(temp, humidity);
+void roundCheck() {
+  float prob = getSnowProbabilityFromSensors();
 
   if (prob >= 0) {
     Serial.printf("Snow probability: %.1f%%\n", prob * 100);
-    if (prob > 0.6) {
+    if (prob > 0.6f) {
       Serial.println("High snow chance — shutting off sprayer.");
       // digitalWrite(SOLENOID_PIN, LOW);
     }
   } else {
     Serial.println("API call failed.");
   }
-
-  delay(600000); // wait 10 minutes
 }
+
+
