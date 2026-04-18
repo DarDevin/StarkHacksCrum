@@ -52,6 +52,7 @@ float getSnowProbabilityFromSensors() {
 // --- Setup ---
 void setup() {
   Serial.begin(115200);
+  initSensors();
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
@@ -78,6 +79,11 @@ void roundCheck() {
   } else {
     Serial.println("API call failed.");
   }
+
+  // Read accelerometer
+  float ax, ay, az;
+  readAccelerometer(&ax, &ay, &az);
+  Serial.printf("Accelerometer: X=%.2f, Y=%.2f, Z=%.2f g\n", ax, ay, az);
 }
 
 
