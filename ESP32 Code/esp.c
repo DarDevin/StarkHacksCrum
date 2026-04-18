@@ -63,29 +63,23 @@ void setup() {
 
 // --- Loop: call every 10 minutes ---
 void loop() {
-  roundCheck();
-  delay(600000); // wait 10 minutes
+  while true{
+    roundCheck();
+    delay(86400000); // wait 24 hours before checking again
+  }
+  
 }
 
 void roundCheck() {
   float prob = getSnowProbabilityFromSensors();
-  while true{
-    if (prob >= 0) {
-      Serial.printf("Snow probability: %.1f%%\n", prob * 100);
-      if (prob > 0.6f) {
-        Serial.println("High snow chance — sprayer active.");
+  if (prob >= 0) {
+    Serial.printf("Snow probability: %.1f%%\n", prob * 100);
+    if (prob > 0.6f) {
+      Serial.println("High snow chance — sprayer active.");
         
-
-
-
-
-        
-      }
-    } else {
-      Serial.println("API call failed.");
     }
-
-    delay(86400000); // wait 24 hours before checking again
+  } else {
+    Serial.println("API call failed.");
   }
   // Read accelerometer
   float ax, ay, az;
