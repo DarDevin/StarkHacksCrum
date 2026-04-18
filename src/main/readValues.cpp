@@ -12,17 +12,11 @@
 DHT dht(DHTPIN, DHTTYPE);
 
 // Solenoid
-#define SOLENOIDPIN 15
+#define SOLENOIDPIN 10
 
-// Motor 1 (L298N) - ENA (PWM), IN1, IN2
-#define MOTOR1_PIN     25   // ENA (PWM)
-#define MOTOR1_IN1     26
-#define MOTOR1_IN2     27
-
-// Motor 2 (L298N) - ENB (PWM), IN3, IN4
-#define MOTOR2_PIN     32   // ENB (PWM)
-#define MOTOR2_IN1     33
-#define MOTOR2_IN2      4
+// Motor power control
+// Pin 11 now drives the buck converter PWM input for both motors.
+#define MOTOR_PWM_PIN 11
 
 // GPS (NEO-6M) on UART2
 #define GPS_RX_PIN  16
@@ -54,18 +48,9 @@ void initSensors() {
   pinMode(SOLENOIDPIN, OUTPUT);
   digitalWrite(SOLENOIDPIN, LOW);
 
-  // Motor pins
-  pinMode(MOTOR1_PIN, OUTPUT);
-  pinMode(MOTOR1_IN1, OUTPUT);
-  pinMode(MOTOR1_IN2, OUTPUT);
-  digitalWrite(MOTOR1_IN1, LOW);
-  digitalWrite(MOTOR1_IN2, LOW);
-
-  pinMode(MOTOR2_PIN, OUTPUT);
-  pinMode(MOTOR2_IN1, OUTPUT);
-  pinMode(MOTOR2_IN2, OUTPUT);
-  digitalWrite(MOTOR2_IN1, LOW);
-  digitalWrite(MOTOR2_IN2, LOW);
+  // Motor pin for buck converter PWM control
+  pinMode(MOTOR_PWM_PIN, OUTPUT);
+  analogWrite(MOTOR_PWM_PIN, 0);
 
   // GPS serial
   gpsSerial.begin(GPS_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
@@ -122,34 +107,24 @@ void spraySolenoid(unsigned long durationMs, uint8_t intensity) {
   analogWrite(SOLENOIDPIN, 0);
 }
 
-// ─── Motor 1 (L298N) ─────────────────────────────────────────────────────────
+// ─── Motor control via buck converter PWM ───────────────────────────────────
 
 // speed: 0–255 PWM value
 void turnOnMotor1(uint8_t speed) {
-  digitalWrite(MOTOR1_IN1, HIGH);
-  digitalWrite(MOTOR1_IN2, LOW);  // Forward direction
-  analogWrite(MOTOR1_PIN, speed);
+  analogWrite(MOTOR_PWM_PIN, speed);
 }
 
 void turnOffMotor1() {
-  digitalWrite(MOTOR1_IN1, LOW);
-  digitalWrite(MOTOR1_IN2, LOW);
-  analogWrite(MOTOR1_PIN, 0);
+  analogWrite(MOTOR_PWM_PIN, 0);
 }
 
-// ─── Motor 2 (L298N) ─────────────────────────────────────────────────────────
-
-// speed: 0–255 PWM value
 void turnOnMotor2(uint8_t speed) {
-  digitalWrite(MOTOR2_IN1, HIGH);
-  digitalWrite(MOTOR2_IN2, LOW);  // Forward direction
-  analogWrite(MOTOR2_PIN, speed);
+  // Both motors share the same buck converter control pin.
+  analogWrite(MOTOR_PWM_PIN, speed);
 }
 
 void turnOffMotor2() {
-  digitalWrite(MOTOR2_IN1, LOW);
-  digitalWrite(MOTOR2_IN2, LOW);
-  analogWrite(MOTOR2_PIN, 0);
+  analogWrite(MOTOR_PWM_PIN, 0);
 }
 
 // ─── Combined Motors ────────────────────────────────────────────────────────
