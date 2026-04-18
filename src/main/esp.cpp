@@ -6,6 +6,7 @@
 #include "readValues.h"
 #include "push_telemetry"
 
+<<<<<<< Updated upstream
 const char* ssid     = "StarkHacks5";
 const char* password = "StarkHacks2026";
 const char* backendServerIP = "192.168.1.XXX"; // Replace with your FastAPI server LAN IP
@@ -36,6 +37,11 @@ bool sendTelemetry(
       isFirstPing
   );
 }
+=======
+const char* ssid     = "StarkHacks-5";
+const char* password = "StarkHacks2026";
+const char* serverIP = "192.168.1.XXX"; // IP of the machine running Flask
+>>>>>>> Stashed changes
 
 /**RUN THROUGH OF EACH FUNCTION:
 
