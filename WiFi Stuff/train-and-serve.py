@@ -100,6 +100,8 @@ def predict():
 def health():
     return jsonify({"status": "ok", "model_loaded": model is not None})
 
+
+
 if __name__ == "__main__":
     df    = fetch_weather_data(days_back=1000)
     model = train_model(df)
