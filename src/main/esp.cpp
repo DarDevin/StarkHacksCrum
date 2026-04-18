@@ -31,6 +31,8 @@ TelemetryResponse sendTelemetry(
     bool isSalting,
     bool isFirstPing
 ) {
+  Serial.println("Waiting for turn to complete...");
+  delay(2000);
   String url = getTelemetryUrl();
   Serial.println("Telemetry URL: " + url);
   TelemetryResponse response = pushTelemetryToFastAPI(

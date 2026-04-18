@@ -14,7 +14,6 @@ TelemetryResponse pushTelemetryToFastAPI(
     const char* serverUrl,
     float latitude,
     float longitude,
-    float angleDelta,
     bool isSalting,
     bool isFirstPing
 );

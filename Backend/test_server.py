@@ -25,7 +25,6 @@ def test_server():
     data = {
         "latitude": 40.4314,
         "longitude": -86.9215,
-        "angle_delta": 0.0,
         "is_salting": False,
         "is_first_ping": True
     }
@@ -42,7 +41,6 @@ def test_server():
     data = {
         "latitude": 40.4314,
         "longitude": -86.9192,
-        "angle_delta": 15.0,
         "is_salting": False,
         "is_first_ping": False
     }

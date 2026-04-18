@@ -10,8 +10,8 @@ MIN_MOVEMENT_DEG    = 0.00001
 
 robot_state = {
     "current_angle": None,
-    "start_lat":     None,
-    "start_lng":     None,
+    "prev_lat":      None,
+    "prev_lng":      None,
     "calibrated":    False,
 }
 
@@ -181,25 +181,26 @@ def find_segment(intersection: Intersection, angle: float):
         return None
     return closest_exit.segment
 
-def make_decision(lat: float, lng: float, angle_delta: float, is_salting: bool, is_first_ping: bool) -> dict:
+def make_decision(lat: float, lng: float, is_salting: bool, is_first_ping: bool) -> dict:
     if is_first_ping:
-        robot_state["start_lat"]  = lat
-        robot_state["start_lng"]  = lng
+        robot_state["prev_lat"]   = lat
+        robot_state["prev_lng"]   = lng
         robot_state["calibrated"] = False
         return {"start_salting": False}
 
-    if not robot_state["calibrated"]:
-        if (abs(lat - robot_state["start_lat"]) < MIN_MOVEMENT_DEG and
-            abs(lng - robot_state["start_lng"]) < MIN_MOVEMENT_DEG):
-            return {"start_salting": False}
-        bearing = calculate_bearing(
-            robot_state["start_lat"], robot_state["start_lng"],
-            lat, lng
-        )
-        robot_state["current_angle"] = (bearing + angle_delta) % 360
-        robot_state["calibrated"]    = True
-    else:
-        robot_state["current_angle"] = (robot_state["current_angle"] + angle_delta) % 360
+    prev_lat = robot_state["prev_lat"]
+    prev_lng = robot_state["prev_lng"]
+
+    # Not enough movement yet to derive a reliable bearing
+    if (abs(lat - prev_lat) < MIN_MOVEMENT_DEG and
+        abs(lng - prev_lng) < MIN_MOVEMENT_DEG):
+        return {"start_salting": False}
+
+    # Derive heading directly from GPS movement between pings
+    robot_state["current_angle"] = calculate_bearing(prev_lat, prev_lng, lat, lng)
+    robot_state["prev_lat"]      = lat
+    robot_state["prev_lng"]      = lng
+    robot_state["calibrated"]    = True
 
     current_angle = robot_state["current_angle"]
     intersection  = find_intersection(lat, lng)
