@@ -5,8 +5,9 @@ import math
 DB_FILE = "saltbot.db"
 SALT_DURATION_HOURS = 8
 INTERSECTION_RADIUS = 0.0002
+MAX_ANGLE_MISMATCH  = 30
+MIN_MOVEMENT_DEG    = 0.00001
 
-# ── ROBOT STATE ───────────────────────────────────────────────────
 robot_state = {
     "current_angle": None,
     "start_lat":     None,
@@ -14,7 +15,6 @@ robot_state = {
     "calibrated":    False,
 }
 
-# ── SEGMENT CLASS ─────────────────────────────────────────────────
 class Segment:
     def __init__(self, segment_id: str):
         self.segment_id = segment_id
@@ -25,21 +25,20 @@ class Segment:
         c.execute("SELECT salted_at FROM segments WHERE segment_id = ?", (self.segment_id,))
         row = c.fetchone()
         conn.close()
-
         if row is None or row[0] is None:
             return False
-
         salted_time = datetime.fromisoformat(row[0])
         return datetime.utcnow() < salted_time + timedelta(hours=SALT_DURATION_HOURS)
 
     def mark_salted(self):
+        now = datetime.utcnow().isoformat()
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
         c.execute("""
             INSERT INTO segments (segment_id, salted_at)
             VALUES (?, ?)
             ON CONFLICT(segment_id) DO UPDATE SET salted_at = ?
-        """, (self.segment_id, datetime.utcnow().isoformat(), datetime.utcnow().isoformat()))
+        """, (self.segment_id, now, now))
         conn.commit()
         conn.close()
 
@@ -50,52 +49,34 @@ class Segment:
         conn.commit()
         conn.close()
 
-# ── ALL SEGMENTS — must be defined before Exit ────────────────────
 SEGMENTS = {
-    # Stadium (E-W)
     "Stadium_Martin_to_Russell":     Segment("Stadium_Martin_to_Russell"),
     "Stadium_Russell_to_University": Segment("Stadium_Russell_to_University"),
-
-    # 3rd (E-W)
     "3rd_Martin_to_Russell":         Segment("3rd_Martin_to_Russell"),
     "3rd_Russell_to_University":     Segment("3rd_Russell_to_University"),
-
-    # 1st (E-W)
     "1st_MacArthur_to_Martin":       Segment("1st_MacArthur_to_Martin"),
     "1st_Martin_to_Russell":         Segment("1st_Martin_to_Russell"),
     "1st_Russell_to_University":     Segment("1st_Russell_to_University"),
-
-    # State (E-W)
     "State_MacArthur_to_Martin":     Segment("State_MacArthur_to_Martin"),
     "State_Martin_to_Russell":       Segment("State_Martin_to_Russell"),
     "State_Russell_to_University":   Segment("State_Russell_to_University"),
-
-    # University (N-S)
     "University_Stadium_to_3rd":     Segment("University_Stadium_to_3rd"),
     "University_3rd_to_1st":         Segment("University_3rd_to_1st"),
     "University_1st_to_State":       Segment("University_1st_to_State"),
-
-    # Russell (N-S)
     "Russell_Stadium_to_3rd":        Segment("Russell_Stadium_to_3rd"),
     "Russell_3rd_to_1st":            Segment("Russell_3rd_to_1st"),
     "Russell_1st_to_State":          Segment("Russell_1st_to_State"),
-
-    # Martin (N-S)
     "Martin_Stadium_to_3rd":         Segment("Martin_Stadium_to_3rd"),
     "Martin_3rd_to_1st":             Segment("Martin_3rd_to_1st"),
     "Martin_1st_to_State":           Segment("Martin_1st_to_State"),
-
-    # MacArthur (N-S) — only State to 1st
     "MacArthur_State_to_1st":        Segment("MacArthur_State_to_1st"),
 }
 
-# ── EXIT CLASS — defined after SEGMENTS ───────────────────────────
 class Exit:
     def __init__(self, segment_id: str, angle: float):
-        self.segment = SEGMENTS.get(segment_id)  # None if unmapped
+        self.segment = SEGMENTS.get(segment_id)
         self.angle   = angle
 
-# ── INTERSECTION CLASS ────────────────────────────────────────────
 class Intersection:
     def __init__(self, id: str, lat: float, lng: float, exits: list):
         self.id    = id
@@ -103,7 +84,6 @@ class Intersection:
         self.lng   = lng
         self.exits = exits
 
-# ── INTERSECTIONS ─────────────────────────────────────────────────
 INTERSECTIONS = [
     Intersection("Stadium_Martin",     40.43144861233744,  -86.92155685324049, exits=[
         Exit("Stadium_Martin_to_Russell",      90),
@@ -175,77 +155,66 @@ INTERSECTIONS = [
     ]),
 ]
 
-# ── ANGLE HELPERS ─────────────────────────────────────────────────
 def calculate_bearing(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
-    """Calculate compass bearing from point 1 to point 2"""
-    lat1  = math.radians(lat1)
-    lat2  = math.radians(lat2)
-    d_lng = math.radians(lng2 - lng1)
-
-    x = math.sin(d_lng) * math.cos(lat2)
-    y = math.cos(lat1) * math.sin(lat2) - math.sin(lat1) * math.cos(lat2) * math.cos(d_lng)
-
-    bearing = math.degrees(math.atan2(x, y))
-    return (bearing + 360) % 360
+    lat1_rad = math.radians(lat1)
+    lat2_rad = math.radians(lat2)
+    d_lng    = math.radians(lng2 - lng1)
+    x = math.sin(d_lng) * math.cos(lat2_rad)
+    y = math.cos(lat1_rad) * math.sin(lat2_rad) - \
+        math.sin(lat1_rad) * math.cos(lat2_rad) * math.cos(d_lng)
+    return (math.degrees(math.atan2(x, y)) + 360) % 360
 
 def angle_difference(a: float, b: float) -> float:
-    """Shortest angular distance between two compass bearings"""
     diff = abs(a - b) % 360
     return diff if diff <= 180 else 360 - diff
 
-# ── LOOKUP FUNCTIONS ──────────────────────────────────────────────
 def find_intersection(lat: float, lng: float):
     closest = min(INTERSECTIONS, key=lambda i: abs(lat - i.lat) + abs(lng - i.lng))
-    if abs(lat - closest.lat) < INTERSECTION_RADIUS and \
-       abs(lng - closest.lng) < INTERSECTION_RADIUS:
+    if (abs(lat - closest.lat) < INTERSECTION_RADIUS and
+        abs(lng - closest.lng) < INTERSECTION_RADIUS):
         return closest
     return None
 
 def find_segment(intersection: Intersection, angle: float):
     closest_exit = min(intersection.exits, key=lambda e: angle_difference(angle, e.angle))
+    if angle_difference(angle, closest_exit.angle) > MAX_ANGLE_MISMATCH:
+        return None
     return closest_exit.segment
 
-# ── MAIN DECISION ─────────────────────────────────────────────────
 def make_decision(lat: float, lng: float, angle_delta: float, is_salting: bool, is_first_ping: bool) -> dict:
-
-    # ── FIRST PING: save start position, do nothing else ─────────
     if is_first_ping:
-        robot_state["start_lat"] = lat
-        robot_state["start_lng"] = lng
+        robot_state["start_lat"]  = lat
+        robot_state["start_lng"]  = lng
+        robot_state["calibrated"] = False
         return {"start_salting": False}
 
-    # ── SECOND PING: calculate initial absolute heading ───────────
     if not robot_state["calibrated"]:
+        if (abs(lat - robot_state["start_lat"]) < MIN_MOVEMENT_DEG and
+            abs(lng - robot_state["start_lng"]) < MIN_MOVEMENT_DEG):
+            return {"start_salting": False}
         bearing = calculate_bearing(
             robot_state["start_lat"], robot_state["start_lng"],
             lat, lng
         )
         robot_state["current_angle"] = (bearing + angle_delta) % 360
         robot_state["calibrated"]    = True
-
-    # ── ALL SUBSEQUENT PINGS: update angle by delta ───────────────
     else:
         robot_state["current_angle"] = (robot_state["current_angle"] + angle_delta) % 360
 
     current_angle = robot_state["current_angle"]
-
-    # ── INTERSECTION LOGIC ────────────────────────────────────────
-    intersection = find_intersection(lat, lng)
+    intersection  = find_intersection(lat, lng)
 
     if intersection:
         segment = find_segment(intersection, current_angle)
         if segment is None:
             return {"start_salting": False}
-
         if segment.is_salted():
             return {"start_salting": False}
-
         segment.mark_salted()
         return {"start_salting": True}
 
     return {"start_salting": is_salting}
 
-# ── DATABASE INIT ─────────────────────────────────────────────────
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -257,3 +226,4 @@ def init_db():
     """)
     conn.commit()
     conn.close()
+
