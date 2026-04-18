@@ -4,6 +4,7 @@
 #include <MPU6050.h>
 #include <TinyGPS++.h>
 #include <HardwareSerial.h>
+#include <math.h>
 
 // DHT Sensor
 #define DHTPIN 4
@@ -13,11 +14,15 @@ DHT dht(DHTPIN, DHTTYPE);
 // Solenoid
 #define SOLENOIDPIN 8
 
-// Motor (L298N)
-// MOTORPIN is the PWM speed pin; also define direction pins
-#define MOTORPIN     9   // ENA (PWM)
-#define MOTOR_IN1   10
-#define MOTOR_IN2   11
+// Motor 1 (L298N)
+#define MOTOR1_PIN     9   // ENA (PWM)
+#define MOTOR1_IN1    10
+#define MOTOR1_IN2    11
+
+// Motor 2 (L298N)
+#define MOTOR2_PIN     12  // ENB (PWM)
+#define MOTOR2_IN1    13
+#define MOTOR2_IN2    14
 
 // GPS (NEO-6M) on UART2
 #define GPS_RX_PIN  16
@@ -50,11 +55,17 @@ void initSensors() {
   digitalWrite(SOLENOIDPIN, LOW);
 
   // Motor pins
-  pinMode(MOTORPIN, OUTPUT);
-  pinMode(MOTOR_IN1, OUTPUT);
-  pinMode(MOTOR_IN2, OUTPUT);
-  digitalWrite(MOTOR_IN1, LOW);
-  digitalWrite(MOTOR_IN2, LOW);
+  pinMode(MOTOR1_PIN, OUTPUT);
+  pinMode(MOTOR1_IN1, OUTPUT);
+  pinMode(MOTOR1_IN2, OUTPUT);
+  digitalWrite(MOTOR1_IN1, LOW);
+  digitalWrite(MOTOR1_IN2, LOW);
+
+  pinMode(MOTOR2_PIN, OUTPUT);
+  pinMode(MOTOR2_IN1, OUTPUT);
+  pinMode(MOTOR2_IN2, OUTPUT);
+  digitalWrite(MOTOR2_IN1, LOW);
+  digitalWrite(MOTOR2_IN2, LOW);
 
   // GPS serial
   gpsSerial.begin(GPS_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
@@ -69,6 +80,7 @@ float readTemp() {
     Serial.println("Failed to read from DHT sensor!");
     return 0.0f;
   }
+  Serial.println(t);
   return t;
 }
 
@@ -78,6 +90,7 @@ float readHumidity() {
     Serial.println("Failed to read from DHT sensor!");
     return 0.0f;
   }
+  Serial.println(h);
   return h;
 }
 
@@ -91,34 +104,64 @@ void readAccelerometer(float* ax, float* ay, float* az) {
   *az = az_raw / 16384.0f;
 }
 
+bool isRobotMoving(float threshold) {
+  float ax, ay, az;
+  readAccelerometer(&ax, &ay, &az);
+  float magnitude = sqrt(ax*ax + ay*ay + az*az);
+  // Assuming at rest, magnitude is around 1g (gravity)
+  // If moving, it will deviate
+  return fabs(magnitude - 1.0f) > threshold;
+}
+
 // ─── Solenoid ────────────────────────────────────────────────────────────────
 
-// Turns the solenoid on for `durationMs` milliseconds, then off.
-void moveSolenoid(unsigned long durationMs) {
-  digitalWrite(SOLENOIDPIN, HIGH);
+// Sprays the solenoid for `durationMs` milliseconds at `intensity` (0-255 PWM).
+void spraySolenoid(unsigned long durationMs, uint8_t intensity) {
+  analogWrite(SOLENOIDPIN, intensity);
   delay(durationMs);
-  digitalWrite(SOLENOIDPIN, LOW);
+  analogWrite(SOLENOIDPIN, 0);
 }
 
-// ─── Motor (L298N) ───────────────────────────────────────────────────────────
+// ─── Motor 1 (L298N) ─────────────────────────────────────────────────────────
 
 // speed: 0–255 PWM value
-// forward: true = forward, false = reverse
-void moveMotor(uint8_t speed, bool forward) {
-  if (forward) {
-    digitalWrite(MOTOR_IN1, HIGH);
-    digitalWrite(MOTOR_IN2, LOW);
-  } else {
-    digitalWrite(MOTOR_IN1, LOW);
-    digitalWrite(MOTOR_IN2, HIGH);
-  }
-  analogWrite(MOTORPIN, speed);
+void turnOnMotor1(uint8_t speed) {
+  digitalWrite(MOTOR1_IN1, HIGH);
+  digitalWrite(MOTOR1_IN2, LOW);  // Forward direction
+  analogWrite(MOTOR1_PIN, speed);
 }
 
-void stopMotor() {
-  digitalWrite(MOTOR_IN1, LOW);
-  digitalWrite(MOTOR_IN2, LOW);
-  analogWrite(MOTORPIN, 0);
+void turnOffMotor1() {
+  digitalWrite(MOTOR1_IN1, LOW);
+  digitalWrite(MOTOR1_IN2, LOW);
+  analogWrite(MOTOR1_PIN, 0);
+}
+
+// ─── Motor 2 (L298N) ─────────────────────────────────────────────────────────
+
+// speed: 0–255 PWM value
+void turnOnMotor2(uint8_t speed) {
+  digitalWrite(MOTOR2_IN1, HIGH);
+  digitalWrite(MOTOR2_IN2, LOW);  // Forward direction
+  analogWrite(MOTOR2_PIN, speed);
+}
+
+void turnOffMotor2() {
+  digitalWrite(MOTOR2_IN1, LOW);
+  digitalWrite(MOTOR2_IN2, LOW);
+  analogWrite(MOTOR2_PIN, 0);
+}
+
+// ─── Combined Motors ────────────────────────────────────────────────────────
+
+void turnOnMotors(uint8_t speed) {
+  turnOnMotor1(speed);
+  turnOnMotor2(speed);
+}
+
+void turnOffMotors() {
+  turnOffMotor1();
+  turnOffMotor2();
 }
 
 // ─── GPS ─────────────────────────────────────────────────────────────────────
@@ -138,6 +181,6 @@ bool readLatLong(float* latitude, float* longitude, unsigned long timeoutMs) {
       return true;
     }
   }
-  Serial.println("GPS: no fix within timeout");
+  Serial.println("GPS:" + *latitude + ", " + *longitude);
   return false;
 }
