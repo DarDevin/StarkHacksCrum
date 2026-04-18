@@ -5,6 +5,8 @@ import math
 DB_FILE = "saltbot.db"
 SALT_DURATION_HOURS = 8
 INTERSECTION_RADIUS = 0.0002
+MAX_ANGLE_MISMATCH  = 30       # degrees — heading must be within this of an exit
+MIN_MOVEMENT_DEG    = 0.00001  # ~1 meter — must move at least this much to calibrate
 
 # ── ROBOT STATE ───────────────────────────────────────────────────
 robot_state = {
@@ -33,13 +35,14 @@ class Segment:
         return datetime.utcnow() < salted_time + timedelta(hours=SALT_DURATION_HOURS)
 
     def mark_salted(self):
+        now = datetime.utcnow().isoformat()
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
         c.execute("""
             INSERT INTO segments (segment_id, salted_at)
             VALUES (?, ?)
             ON CONFLICT(segment_id) DO UPDATE SET salted_at = ?
-        """, (self.segment_id, datetime.utcnow().isoformat(), datetime.utcnow().isoformat()))
+        """, (self.segment_id, now, now))
         conn.commit()
         conn.close()
 
@@ -89,10 +92,10 @@ SEGMENTS = {
     "MacArthur_State_to_1st":        Segment("MacArthur_State_to_1st"),
 }
 
-# ── EXIT CLASS — defined after SEGMENTS ───────────────────────────
+# ── EXIT CLASS ────────────────────────────────────────────────────
 class Exit:
     def __init__(self, segment_id: str, angle: float):
-        self.segment = SEGMENTS.get(segment_id)  # None if unmapped
+        self.segment = SEGMENTS.get(segment_id)
         self.angle   = angle
 
 # ── INTERSECTION CLASS ────────────────────────────────────────────
@@ -177,32 +180,49 @@ INTERSECTIONS = [
 
 # ── ANGLE HELPERS ─────────────────────────────────────────────────
 def calculate_bearing(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
-    """Calculate compass bearing from point 1 to point 2"""
-    lat1  = math.radians(lat1)
-    lat2  = math.radians(lat2)
-    d_lng = math.radians(lng2 - lng1)
+    """
+    Calculate compass bearing (degrees clockwise from north) of the vector
+    from point 1 to point 2.
 
-    x = math.sin(d_lng) * math.cos(lat2)
-    y = math.cos(lat1) * math.sin(lat2) - math.sin(lat1) * math.cos(lat2) * math.cos(d_lng)
+    0°   = moved north
+    90°  = moved east
+    180° = moved south
+    270° = moved west
+    """
+    lat1_rad = math.radians(lat1)
+    lat2_rad = math.radians(lat2)
+    d_lng    = math.radians(lng2 - lng1)
+
+    x = math.sin(d_lng) * math.cos(lat2_rad)
+    y = math.cos(lat1_rad) * math.sin(lat2_rad) - \
+        math.sin(lat1_rad) * math.cos(lat2_rad) * math.cos(d_lng)
 
     bearing = math.degrees(math.atan2(x, y))
     return (bearing + 360) % 360
 
 def angle_difference(a: float, b: float) -> float:
-    """Shortest angular distance between two compass bearings"""
+    """Shortest angular distance between two compass bearings (0–180)"""
     diff = abs(a - b) % 360
     return diff if diff <= 180 else 360 - diff
 
 # ── LOOKUP FUNCTIONS ──────────────────────────────────────────────
 def find_intersection(lat: float, lng: float):
+    """Return the closest intersection if within INTERSECTION_RADIUS, else None"""
     closest = min(INTERSECTIONS, key=lambda i: abs(lat - i.lat) + abs(lng - i.lng))
-    if abs(lat - closest.lat) < INTERSECTION_RADIUS and \
-       abs(lng - closest.lng) < INTERSECTION_RADIUS:
+    if (abs(lat - closest.lat) < INTERSECTION_RADIUS and
+        abs(lng - closest.lng) < INTERSECTION_RADIUS):
         return closest
     return None
 
 def find_segment(intersection: Intersection, angle: float):
+    """
+    Return the Segment whose exit angle is closest to `angle`.
+    If the closest exit is more than MAX_ANGLE_MISMATCH degrees off, return None
+    (meaning the robot turned onto an unmapped road).
+    """
     closest_exit = min(intersection.exits, key=lambda e: angle_difference(angle, e.angle))
+    if angle_difference(angle, closest_exit.angle) > MAX_ANGLE_MISMATCH:
+        return None
     return closest_exit.segment
 
 # ── MAIN DECISION ─────────────────────────────────────────────────
@@ -210,12 +230,19 @@ def make_decision(lat: float, lng: float, angle_delta: float, is_salting: bool, 
 
     # ── FIRST PING: save start position, do nothing else ─────────
     if is_first_ping:
-        robot_state["start_lat"] = lat
-        robot_state["start_lng"] = lng
+        robot_state["start_lat"]  = lat
+        robot_state["start_lng"]  = lng
+        robot_state["calibrated"] = False
         return {"start_salting": False}
 
     # ── SECOND PING: calculate initial absolute heading ───────────
     if not robot_state["calibrated"]:
+        # Make sure robot actually moved before calculating bearing
+        lat_diff = abs(lat - robot_state["start_lat"])
+        lng_diff = abs(lng - robot_state["start_lng"])
+        if lat_diff < MIN_MOVEMENT_DEG and lng_diff < MIN_MOVEMENT_DEG:
+            return {"start_salting": False}  # wait for actual movement
+
         bearing = calculate_bearing(
             robot_state["start_lat"], robot_state["start_lng"],
             lat, lng
@@ -234,15 +261,21 @@ def make_decision(lat: float, lng: float, angle_delta: float, is_salting: bool, 
 
     if intersection:
         segment = find_segment(intersection, current_angle)
+
+        # Unmapped road (angle doesn't match any exit within 30°)
+        # OR exit points to a segment_id not in SEGMENTS
         if segment is None:
             return {"start_salting": False}
 
+        # Already salted within 8 hours
         if segment.is_salted():
             return {"start_salting": False}
 
+        # Salt it
         segment.mark_salted()
         return {"start_salting": True}
 
+    # Mid-street stop — maintain current salting state
     return {"start_salting": is_salting}
 
 # ── DATABASE INIT ─────────────────────────────────────────────────
