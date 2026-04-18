@@ -3,9 +3,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
+
+
 # Change this import to match your filename/module name
 # Example: if the file is saved as salt_logic.py, use:
 from roadlogicanddata import make_decision, init_db
+import requests
+import uvicorn
 
 
 @asynccontextmanager
@@ -51,3 +55,9 @@ def receive_telemetry(data: TelemetryPing):
         },
         "decision": decision,
     }
+
+def main():
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+if __name__ == "__main__":
+    main()

@@ -12,3 +12,22 @@ class Telemetry(BaseModel):
 def telemetry(data: Telemetry):
     print(data)
     return {"status": "ok"}
+
+def main():
+    # Start the FastAPI server
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+    # To test the server, you can use the following code to send a POST request with telemetry data:
+    import requests
+    telemetry_data = {
+        "latitude": 37.7749,
+        "longitude": -122.4194,
+        "orientation_deg": 90.0
+    }
+    response = requests.post("http://10.10.8.55:8000/telemetry", json=telemetry_data)
+    print(response.json())
+
+
+if __name__ == "__main__":
+    main()

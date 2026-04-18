@@ -4,10 +4,38 @@
 #include <ArduinoJson.h>
 #include "esp.h"
 #include "readValues.h"
+#include "push_telemetry"
 
-const char* ssid     = "YOUR_WIFI_SSID";
-const char* password = "YOUR_WIFI_PASSWORD";
-const char* serverIP = "192.168.1.XXX"; // IP of the machine running Flask
+const char* ssid     = "StarkHacks5";
+const char* password = "StarkHacks2026";
+const char* backendServerIP = "192.168.1.XXX"; // Replace with your FastAPI server LAN IP
+const int backendServerPort = 8000;            // Replace if your FastAPI server runs on a different port
+const char* backendTelemetryPath = "/telemetry"; // FastAPI telemetry endpoint
+const char* snowServerIP = "192.168.1.XXX"; // Replace with your snow prediction API server IP
+const int snowServerPort = 5000;               // Replace if the snow prediction API runs on another port
+
+String getTelemetryUrl() {
+  return String("http://") + backendServerIP + ":" + String(backendServerPort) + backendTelemetryPath;
+}
+
+bool sendTelemetry(
+    float latitude,
+    float longitude,
+    float angleDelta,
+    bool isSalting,
+    bool isFirstPing
+) {
+  String url = getTelemetryUrl();
+  Serial.println("Telemetry URL: " + url);
+  return pushTelemetryToFastAPI(
+      url.c_str(),
+      latitude,
+      longitude,
+      angleDelta,
+      isSalting,
+      isFirstPing
+  );
+}
 
 /**RUN THROUGH OF EACH FUNCTION:
 
@@ -23,7 +51,7 @@ float getSnowProbability(float tempC, float humidity) {
   if (WiFi.status() != WL_CONNECTED) return -1.0;
 
   HTTPClient http;
-  String url = String("http://") + serverIP + ":5000/predict"
+  String url = String("http://") + snowServerIP + ":" + String(snowServerPort) + "/predict"
              + "?temp=" + String(tempC, 2)
              + "&humidity=" + String(humidity, 2);
 
