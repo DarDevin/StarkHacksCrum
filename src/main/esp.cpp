@@ -8,9 +8,17 @@
 
 const char* ssid     = "StarkHacks5";
 const char* password = "StarkHacks2026";
+<<<<<<< Updated upstream
 const char* backendServerIP = "10.10.8.55"; // Your PC's IP address
 const int backendServerPort = 8000;            // FastAPI server port
 const char* backendTelemetryPath = "/telemetry"; // FastAPI telemetry endpoint
+=======
+const char* backendServerIP = "10.10.8.55"; // Replace with your FastAPI server LAN IP
+const int backendServerPort = 8000;            // Replace if your FastAPI server runs on a different port
+const char* backendTelemetryPath = "/telemetry"; // FastAPI telemetry endpoint
+const char* snowServerIP = "10.10.8.55"; // Replace with your snow prediction API server IP
+const int snowServerPort = 5000;               // Replace if the snow prediction API runs on another port
+>>>>>>> Stashed changes
 
 String getTelemetryUrl() {
   return String("http://") + backendServerIP + ":" + String(backendServerPort) + backendTelemetryPath;
@@ -33,6 +41,10 @@ TelemetryResponse sendTelemetry(
       isSalting,
       isFirstPing
   );
+<<<<<<< Updated upstream
+=======
+}
+>>>>>>> Stashed changes
 
   // Use the backend's salting decision
   if (response.success) {

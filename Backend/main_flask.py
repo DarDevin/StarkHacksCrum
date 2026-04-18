@@ -1,9 +1,13 @@
 from flask import Flask, request, jsonify
 <<<<<<<< HEAD:Backend/main_flask.py
+<<<<<<<< HEAD:Backend/main_flask.py
 from readlogicanddata import make_decision, init_db, SEGMENTS
 ========
 from roadlogicanddata import make_decision, init_db, SEGMENTS
 >>>>>>>> f8dfce5783cec462618455fea36f67f2a57917b5:src/main/main_flask.py
+========
+from roadlogicanddata import make_decision, init_db, SEGMENTS
+>>>>>>>> f53878032030993de6e8f2de74c52c3bcd21900f:src/main/main_flask.py
 
 app = Flask(__name__)
 
