@@ -1,6 +1,9 @@
 #ifndef READVALUES_H
 #define READVALUES_H
 
+#include <stdbool.h>
+#include <stdint.h>
+
 void initSensors();
 float readTemp();
 float readHumidity();
