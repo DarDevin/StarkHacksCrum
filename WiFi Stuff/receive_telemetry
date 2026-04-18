@@ -1,0 +1,14 @@
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class Telemetry(BaseModel):
+    latitude: float
+    longitude: float
+    orientation_deg: float
+
+@app.post("/telemetry")
+def telemetry(data: Telemetry):
+    print(data)
+    return {"status": "ok"}
