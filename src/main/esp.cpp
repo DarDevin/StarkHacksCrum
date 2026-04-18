@@ -4,7 +4,7 @@
 #include <ArduinoJson.h>
 #include "esp.h"
 #include "readValues.h"
-#include "push_telemetry"
+#include "push_telemetry.h"
 
 const char* ssid     = "StarkHacks5";
 const char* password = "StarkHacks2026";
@@ -18,7 +18,7 @@ String getTelemetryUrl() {
   return String("http://") + backendServerIP + ":" + String(backendServerPort) + backendTelemetryPath;
 }
 
-bool sendTelemetry(
+TelemetryResponse sendTelemetry(
     float latitude,
     float longitude,
     float angleDelta,
@@ -27,7 +27,7 @@ bool sendTelemetry(
 ) {
   String url = getTelemetryUrl();
   Serial.println("Telemetry URL: " + url);
-  return pushTelemetryToFastAPI(
+  TelemetryResponse response = pushTelemetryToFastAPI(
       url.c_str(),
       latitude,
       longitude,
@@ -35,6 +35,20 @@ bool sendTelemetry(
       isSalting,
       isFirstPing
   );
+
+  // Use the backend's salting decision
+  if (response.success) {
+    if (response.startSalting) {
+      Serial.println("Activating solenoid based on backend decision");
+      spraySolenoid(2000, 255); // Spray for 2 seconds at full intensity
+    } else {
+      Serial.println("Backend says don't salt - solenoid remains off");
+    }
+  } else {
+    Serial.println("Failed to get backend decision - keeping current salting state");
+  }
+
+  return response;
 }
 
 /**RUN THROUGH OF EACH FUNCTION:
