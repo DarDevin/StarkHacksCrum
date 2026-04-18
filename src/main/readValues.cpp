@@ -7,22 +7,22 @@
 #include <math.h>
 
 // DHT Sensor
-#define DHTPIN 4
+#define DHTPIN 5
 #define DHTTYPE DHT22
 DHT dht(DHTPIN, DHTTYPE);
 
 // Solenoid
-#define SOLENOIDPIN 8
+#define SOLENOIDPIN 15
 
-// Motor 1 (L298N)
-#define MOTOR1_PIN     9   // ENA (PWM)
-#define MOTOR1_IN1    10
-#define MOTOR1_IN2    11
+// Motor 1 (L298N) - ENA (PWM), IN1, IN2
+#define MOTOR1_PIN     25   // ENA (PWM)
+#define MOTOR1_IN1     26
+#define MOTOR1_IN2     27
 
-// Motor 2 (L298N)
-#define MOTOR2_PIN     12  // ENB (PWM)
-#define MOTOR2_IN1    13
-#define MOTOR2_IN2    14
+// Motor 2 (L298N) - ENB (PWM), IN3, IN4
+#define MOTOR2_PIN     32   // ENB (PWM)
+#define MOTOR2_IN1     33
+#define MOTOR2_IN2      4
 
 // GPS (NEO-6M) on UART2
 #define GPS_RX_PIN  16
@@ -181,6 +181,6 @@ bool readLatLong(float* latitude, float* longitude, unsigned long timeoutMs) {
       return true;
     }
   }
-  Serial.println("GPS:" + *latitude + ", " + *longitude);
+  Serial.printf("GPS: %.6f, %.6f\n", *latitude, *longitude);
   return false;
 }
