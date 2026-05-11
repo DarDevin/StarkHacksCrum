@@ -1,0 +1,80 @@
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
+
+// Structure to hold the backend response
+struct TelemetryResponse {
+    bool success;
+    bool startSalting;
+};
+
+// Send telemetry to FastAPI backend and return the salting decision
+TelemetryResponse pushTelemetryToFastAPI(
+    const char* serverUrl,
+    float latitude,
+    float longitude,
+    float angleDelta,
+    bool isSalting,
+    bool isFirstPing
+) {
+    TelemetryResponse result = {false, false}; // Default: failed, don't salt
+
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("WiFi not connected");
+        return result;
+    }
+
+    HTTPClient http;
+    if (!http.begin(serverUrl)) {
+        Serial.println("Failed to start HTTP connection");
+        return result;
+    }
+
+    http.addHeader("Content-Type", "application/json");
+
+    String json = "{";
+    json += "\"latitude\":" + String(latitude, 6) + ",";
+    json += "\"longitude\":" + String(longitude, 6) + ",";
+    json += "\"angle_delta\":" + String(angleDelta, 2) + ",";
+    json += "\"is_salting\":" + String(isSalting ? "true" : "false") + ",";
+    json += "\"is_first_ping\":" + String(isFirstPing ? "true" : "false");
+    json += "}";
+
+    int httpCode = http.POST(json);
+    String response = http.getString();
+
+    Serial.print("HTTP code: ");
+    Serial.println(httpCode);
+    Serial.print("Response: ");
+    Serial.println(response);
+
+    http.end();
+
+    // Check if HTTP request was successful
+    if (httpCode < 200 || httpCode >= 300) {
+        Serial.println("HTTP request failed");
+        return result;
+    }
+
+    // Parse JSON response
+    StaticJsonDocument<512> doc;
+    DeserializationError error = deserializeJson(doc, response);
+
+    if (error) {
+        Serial.print("JSON parsing failed: ");
+        Serial.println(error.c_str());
+        return result;
+    }
+
+    // Extract the decision
+    if (doc.containsKey("decision") && doc["decision"].containsKey("start_salting")) {
+        result.success = true;
+        result.startSalting = doc["decision"]["start_salting"];
+        Serial.print("Backend decision - start salting: ");
+        Serial.println(result.startSalting ? "YES" : "NO");
+    } else {
+        Serial.println("Response missing decision.start_salting field");
+    }
+
+    return result;
+}
