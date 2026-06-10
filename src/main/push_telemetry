@@ -1,80 +1,99 @@
+#include <Arduino.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+#include "esp.h"
+#include "readValues.h"
+#include "push_telemetry.h"
 
-// Structure to hold the backend response
-struct TelemetryResponse {
-    bool success;
-    bool startSalting;
-};
+const char* ssid     = "StarkHacks5";
+const char* password = "StarkHacks2026";
+const char* backendServerIP = "10.10.8.55";
+const int backendServerPort = 8000;
+const char* backendTelemetryPath = "/telemetry";
 
-// Send telemetry to FastAPI backend and return the salting decision
-TelemetryResponse pushTelemetryToFastAPI(
-    const char* serverUrl,
+String getTelemetryUrl() {
+  return String("http://") + backendServerIP + ":" + String(backendServerPort) + backendTelemetryPath;
+}
+
+TelemetryResponse sendTelemetry(
     float latitude,
     float longitude,
-    float angleDelta,
     bool isSalting,
     bool isFirstPing
 ) {
-    TelemetryResponse result = {false, false}; // Default: failed, don't salt
+  // Wait for the robot to finish its turn before sampling telemetry
+  Serial.println("Waiting for turn to complete...");
+  delay(2000);
 
-    if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("WiFi not connected");
-        return result;
-    }
+  // Wait until the robot has fully stopped before sending
+  while (isRobotMoving(0.1f)) {
+    Serial.println("Robot still moving, waiting...");
+    delay(100);
+  }
 
-    HTTPClient http;
-    if (!http.begin(serverUrl)) {
-        Serial.println("Failed to start HTTP connection");
-        return result;
-    }
+  String url = getTelemetryUrl();
+  Serial.println("Telemetry URL: " + url);
+  TelemetryResponse response = pushTelemetryToFastAPI(
+      url.c_str(),
+      latitude,
+      longitude,
+      isSalting,
+      isFirstPing
+  );
 
-    http.addHeader("Content-Type", "application/json");
-
-    String json = "{";
-    json += "\"latitude\":" + String(latitude, 6) + ",";
-    json += "\"longitude\":" + String(longitude, 6) + ",";
-    json += "\"angle_delta\":" + String(angleDelta, 2) + ",";
-    json += "\"is_salting\":" + String(isSalting ? "true" : "false") + ",";
-    json += "\"is_first_ping\":" + String(isFirstPing ? "true" : "false");
-    json += "}";
-
-    int httpCode = http.POST(json);
-    String response = http.getString();
-
-    Serial.print("HTTP code: ");
-    Serial.println(httpCode);
-    Serial.print("Response: ");
-    Serial.println(response);
-
-    http.end();
-
-    // Check if HTTP request was successful
-    if (httpCode < 200 || httpCode >= 300) {
-        Serial.println("HTTP request failed");
-        return result;
-    }
-
-    // Parse JSON response
-    StaticJsonDocument<512> doc;
-    DeserializationError error = deserializeJson(doc, response);
-
-    if (error) {
-        Serial.print("JSON parsing failed: ");
-        Serial.println(error.c_str());
-        return result;
-    }
-
-    // Extract the decision
-    if (doc.containsKey("decision") && doc["decision"].containsKey("start_salting")) {
-        result.success = true;
-        result.startSalting = doc["decision"]["start_salting"];
-        Serial.print("Backend decision - start salting: ");
-        Serial.println(result.startSalting ? "YES" : "NO");
+  // Use the backend's salting decision
+  if (response.success) {
+    if (response.startSalting) {
+      Serial.println("Activating solenoid based on backend decision");
+      spraySolenoid(2000, 255);
     } else {
-        Serial.println("Response missing decision.start_salting field");
+      Serial.println("Backend says don't salt - solenoid remains off");
     }
+  } else {
+    Serial.println("Failed to get backend decision - keeping current salting state");
+  }
 
-    return result;
+  return response;
+}
+
+void espSetup() {
+  Serial.begin(115200);
+  initSensors();
+
+  Serial.print("Connecting to WiFi");
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi connected. IP: " + WiFi.localIP().toString());
+
+  // Send first ping to register with the server
+  float lat = 0.0f, lng = 0.0f;
+  readLatLong(&lat, &lng, 2000);
+  sendTelemetry(lat, lng, false, true);
+}
+
+void espLoop() {
+  static bool isSalting = false;
+
+  // Only send telemetry when the robot is stopped
+  if (isRobotMoving(0.1f)) {
+    return;
+  }
+
+  float lat = 0.0f, lng = 0.0f;
+  bool gotFix = readLatLong(&lat, &lng, 2000);
+  if (!gotFix) {
+    Serial.println("No GPS fix, skipping telemetry");
+    return;
+  }
+
+  TelemetryResponse response = sendTelemetry(lat, lng, isSalting, false);
+  if (response.success) {
+    isSalting = response.startSalting;
+  }
+
+  delay(500);
 }
